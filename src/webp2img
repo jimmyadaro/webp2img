@@ -1,0 +1,273 @@
+#!/bin/bash
+
+# title            :webp2img
+# description      :Loops the current directory folder, looking for "webp" files and converting them into "jpg" (or "jpeg", or "png")
+# author           :Jimmy Adaro (jimmyadaro)
+# link             :https://github.com/jimmyadaro/
+# version          :1.0
+# license          :Copyright 2020 Jimmy Adaro - MIT License
+
+script_name="$(basename -- "$0")";
+
+usage() {
+  echo "Usage: $script_name [-e <\"jpg\"|\"jpeg\"|\"png\">] [-l <int>] [-r <int>] [-k] [-q] [-h]"
+
+  1>&2; exit 0;
+};
+
+# -e "extension" | string "jpg", "jpeg" or "png" | default "jpg"
+# -l "n" | int | default "2" | Loop script every "n" seconds
+# -r "depth" | int | default "1" | To use "find -maxdepth n"
+# -k | Keep the original "webp" file (do not remove it after converting)
+# -q | Quiet
+# -h | Help
+
+# Default options setup
+
+# The format we need to convert
+# Since it's automatic, all you need to edit is this variable and the "accepted_extensions" array down below
+original_format="webp"
+
+# Accepted extensions
+declare -a accepted_extensions;
+accepted_extensions=(jpg jpeg png);
+
+# Default conversion to "jpg" format
+new_extension=${accepted_extensions[0]};
+
+# Keep the original "webp" file
+# "0" means no, "1" means yes
+keep_original="0";
+
+# Loop script every n seconds
+loop_every="2";
+loop_every_word="seconds";
+
+# Set recursive depth for files lookup, "1" by default
+recursive_depth="1";
+
+# Verbose output
+# "1" means verbose, "0" means quiet
+is_verbose="1";
+
+# Helpers
+
+# Get current path where the terminal is at
+current_path="$(pwd)";
+
+# Check if extension is valid
+is_valid_extension() {
+    in=1;
+    for element in ${accepted_extensions[*]}; do
+        if [[ $element == "$1" ]]; then
+            in=0;
+            break;
+        fi;
+    done;
+    return $in;
+};
+
+# Converted files counter
+converted_files="0";
+zero="0"
+converted_files_word="seconds";
+
+# Get date
+g_date() {
+  echo "[$(date '+%H:%M:%S')]";
+}
+
+# Output messages
+# See: https://stackoverflow.com/a/2924753/6692958
+return_info() {
+  declare msg="$1"
+  echo -e "\033[1m$(g_date) [INFO]\033[0m $msg";
+}
+
+return_config() {
+  declare msg="$1"
+  echo -e "\033[1m$(g_date) [CONFIG]\033[0m $msg";
+}
+
+return_new() {
+  declare msg="$1"
+  echo -e "\033[1m$(g_date) \033[96m[NEW]\033[0m $msg";
+}
+
+return_ignore() {
+  declare msg="$1"
+  echo -e "\033[1m$(g_date) \033[33m[IGNORE]\033[0m $msg";
+}
+
+return_error() {
+  declare msg="$1"
+  declare fatal="$2"
+  echo -e "\033[1m$(g_date) \033[31m[ERROR]\033[0m $msg";
+  if [[ $fatal == "fatal" ]]; then
+    exit 1;
+  fi
+}
+
+return_ok() {
+  declare msg="$1"
+  echo -e "\033[1m$(g_date) \033[32m[OK]\033[0m $msg";
+}
+
+return_done() {
+  declare msg="$1"
+  echo -e "\033[1m$(g_date) \033[42m[DONE]\033[0m $msg";
+}
+
+# Get the user options
+while getopts "e:kl:r:qh" OPTIONS; do
+    case "${OPTIONS}" in
+        # This option expects some argument
+        e)
+          if is_valid_extension "$OPTARG"; then
+            new_extension="$OPTARG";
+          else
+            return_config "Invalid file extension"
+            return_info "Try one of these: ${accepted_extensions[*]}";
+            exit 1;
+          fi ;;
+
+        # This option does not expect any argument
+        k) keep_original="1" ;;
+
+        # This option expects some argument
+        l) loop_every="$OPTARG" ;;
+
+        # This option expects some argument
+        r) recursive_depth="$OPTARG" ;;
+
+        # Does not expect argument
+        q) is_verbose="0" ;;
+
+        # This option does not expect any argument
+        h) usage ;;
+
+        # If some option with required arguments has no arguments, must throw error
+        :)
+          exit 1 ;;
+        \?)
+          # Anything that is not in OPTIONS must throw error
+          exit 1 ;;
+    esac
+done
+
+# Use the correct "seconds" word for output
+# "0 seconds", "1 second", "2 seconds"...
+if [[ $loop_every == "1" ]]; then
+  loop_every_word="second";
+fi
+
+# Check if current execution is verbose
+is_verbose() {
+  if [[ $is_verbose == "1" ]]; then
+    return 0;
+  else
+    return 1;
+  fi;
+};
+
+# Show first output with current configuration data
+if is_verbose; then
+  if [[ $keep_original == "1" ]]; then
+    return_config "Keeping original \"$original_format\" files"
+  fi
+  return_config "Converting \"$original_format\" to \"$new_extension\"";
+  return_config "Looping every $loop_every $loop_every_word";
+  return_config "Recursive depth: $recursive_depth";
+  return_config "Watching \"$current_path/\"";
+fi
+
+# Loop start
+while :; do
+
+  # Flag
+  new_files="0";
+
+  # Start seconds counter for later output
+  start=$(date +%s);
+
+  # Search in the current folder (no subdirectories by default, check "recursive_depth") and use the finded files
+  while read i; do
+
+      # Get name and extension (some kind of "split")
+      FILENAME=$(basename -- "$i");
+      EXTENSION="${FILENAME##*.}";
+      NAME="${FILENAME%.*}";
+
+      # Display founded file
+      if is_verbose; then
+        if [[ $keep_original == "0" ]]; then
+          # Found some "webp" file
+          return_new "\"$NAME.$EXTENSION\"";
+        fi
+      fi
+
+      # If there's some "jpg" file with the same name and extension, do nothing
+      if test -f "$NAME.$new_extension"; then
+        if is_verbose; then
+          if [[ $keep_original == "0" ]]; then
+            return_ignore "\"$NAME.$new_extension\" already exists";
+          fi
+        fi
+      else
+        # If there's no "jpg" file, convert the finded "webp" file to "jpg" format
+        if convert "$current_path/$NAME.$EXTENSION" "./$NAME.$new_extension"; then
+            # Flag there's some files after "find"
+            new_files="1"
+            # File converted successfully
+            if is_verbose; then
+              # return_ok "\"$NAME.$EXTENSION\" converted to \"$NAME.$new_extension\"";
+              return_ok "Converted to \"$NAME.$new_extension\"";
+              # Update counter
+              converted_files=$((converted_files + 1))
+
+            fi
+          else
+            # File not converted (failed)
+            if is_verbose; then
+              return_error "Failed to convert \"$NAME.$EXTENSION\" (check file permissions)";
+            fi
+        fi
+      fi
+
+      # If the file should be removed, delete it
+      if [[ $keep_original == "0" ]]; then
+        if rm "$current_path/$NAME.$EXTENSION"; then
+          # File deleted successfully
+          if is_verbose; then
+            return_ok "Deleted \"$NAME.$EXTENSION\"";
+          fi
+        else
+          # File not deleted (failed)
+          if is_verbose; then
+            return_error "Could not delete \"$NAME.$EXTENSION\", try doing it manually (check file permissions)";
+          else
+            exit 1;
+          fi
+        fi
+      fi;
+
+    # End of "while read i; do", sending the results of "find"
+  done < <(find "$current_path" -maxdepth "$recursive_depth" -type f -name "*.$original_format")
+
+    # Output final data for each loop
+    if is_verbose; then
+      if [ $new_files == "1" ] && [[ "$converted_files" -gt "$zero" ]]; then
+        conversion_seconds=$(($(date +%s)-${start}))
+        if [[ $conversion_seconds == "1" ]]; then
+          converted_files_word="second";
+        fi
+
+        return_done "Took ~$conversion_seconds $converted_files_word";
+        return_info "Converted $converted_files files this session";
+        return_info "Files up to date, watching for changes...";
+      fi
+    fi
+
+   # Loop script every n seconds
+  sleep "$loop_every";
+done
