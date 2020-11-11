@@ -1,6 +1,6 @@
 # webp2img
 
-![](https://i.imgur.com/WRSUJcV.gif)
+![Default usage](/webp2img-default-usage.gif)
 
 ### Convert WebP files into JPG, JPEG or PNG
 
